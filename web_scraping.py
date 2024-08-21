@@ -1,94 +1,151 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
+import requests
+from bs4 import BeautifulSoup
 import pandas as pd
 import time
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
 
-# Path to your WebDriver (e.g., chromedriver)
-driver_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+# Definir um User-Agent comum de navegador
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36'
+}
 
+# Lista de letras maiúsculas
+upper_letters_list = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 
+# Dicionário para contar quantas músicas foram coletadas por letra
+tracks_per_letter = {letter: 0 for letter in upper_letters_list}
 
-# Initialize the WebDriver (e.g., Chrome)
+# Lista para armazenar os dados
+data = []
 
-driver = webdriver.Chrome()
+# Quantidade máxima de músicas por letra do alfabeto
+max_tracks_per_letter = 100
 
-page = 1
+# Loop principal para cada letra do alfabeto
+for letter in upper_letters_list:
+    
+    if tracks_per_letter[letter] >= max_tracks_per_letter:
+        continue
+    
+    page_number = 1
+    
+    while tracks_per_letter[letter] < max_tracks_per_letter:
+        print(f"Coletando músicas com a letra {letter}..., {tracks_per_letter[letter]}/{max_tracks_per_letter} músicas coletadas")
+        if page_number == 1:
+            url = f"https://www.lyrics.com/artists/{letter}"
+        else:
+            url = f"https://www.lyrics.com/artists/{letter}/{page_number}"
 
-while page < 50:
+        # Fazer requisição à URL com o User-Agent
+        response = requests.get(url, headers=headers)
 
-    # URL of the website you want to scrape
-    url = f"https://www.coinbase.com/pt-br/explore?page=${1}"
+        # Verificar se a requisição foi bem-sucedida
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
 
-    # Open the URL in the browser
-    driver.get(url)
+            # Encontrar todos os elementos <tr>
+            elements = soup.find_all('tr')
 
-    # Wait for the page to load (adjust sleep time as necessary)
-    time.sleep(5)
+            if not elements:
+                break
 
-    # Find the data you want to scrape
-    # This example assumes you want to scrape some text within <h2> tags
-    data = []
-    elements = driver.find_elements(By.TAG_NAME, 'tr')
-    for i in range(len(elements)):
-        time.sleep(5)
-        try:
-            # Re-find the elements list as it might have changed
-            elements = driver.find_elements(By.TAG_NAME, 'tr')
-            element = elements[i]
-
-            aria_label = element.get_attribute('aria-label')
-            
-            if aria_label:
-                name = aria_label.strip()[21:]  # Adjust as necessary
-                
-                # Construct the URL based on the name
-                url1 = f"https://www.coinbase.com/pt-br/price/{name.lower()}"
-                
-                # Navigate to the new URL
-                driver.get(url1)
-                
-                # Wait for the new page to load
-                WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'p')))
-                
-                # Find the first <p> element on the new page
-                paragraphs = driver.find_elements(By.CSS_SELECTOR, 'div[role="region"] p')
-                
-                if paragraphs:
-                    first_paragraph_text = paragraphs[1].text
+            for element in elements:
+                try:
+                    # Encontrar todos os elementos <td> dentro do <tr>
+                    tds = element.find_all('td')
                     
-                    
-                else:
-                    first_paragraph_text = "No paragraph found"
-                
-                
-                # Add data to the DataFrame
-                data.append({'Name': name, 'Text': first_paragraph_text})
-                
+                    # Verificar se existem pelo menos 3 <td>
+                    if len(tds) >= 3:
+                        # Verificar se o valor do segundo <td> é maior que 50
+                        td_value = tds[1].text.strip()
+                        
+                        if td_value.isdigit() and int(td_value) > 50:
+                            # Redirecionar para a URL no <a> dentro do primeiro <td>
+                            artist_link = tds[0].find('a')
+                            if artist_link:
+                                artist_url = f"https://www.lyrics.com/{artist_link['href']}"
+                                
+                                # Requisitar a página do artista
+                                artist_response = requests.get(artist_url, headers=headers)
+                                if artist_response.status_code == 200:
+                                    artist_soup = BeautifulSoup(artist_response.content, 'html.parser')
+                                    
+                                    # Encontrar todos os álbuns do artista dentro da div com a classe tdata-ext
+                                    tdata_ext = artist_soup.find('div', class_='tdata-ext')
+                                    if tdata_ext:
+                                        albums = tdata_ext.find_all('div', class_='clearfix')
+                                        for album in albums:
+                                            album_link = album.find('h3').find('a')
+                                            if album_link:
+                                                album_url = f"https://www.lyrics.com/{album_link['href']}"
+                                                
+                                                # Requisitar a página do álbum
+                                                album_response = requests.get(album_url, headers=headers)
+                                                if album_response.status_code == 200:
+                                                    album_soup = BeautifulSoup(album_response.content, 'html.parser')
+                                                    
+                                                    # Encontrar todas as músicas do álbum
+                                                    songs = album_soup.find_all('tr')
+                                                    for song in songs:
+                                                        # Verificar se o <tr> possui pelo menos 2 <td>
+                                                        song_tds = song.find_all('td')
+                                                        if len(song_tds) >= 2:
+                                                            song_td = song_tds[1].find('div')
+                                                            song_link = song_td.find('a')
+                                                            if song_link:
+                                                                song_url = f"https://www.lyrics.com/{song_link['href']}"
+                                                                song_name = song_link.text.strip()
+                                                                
+                                                                # Requisitar a página da música
+                                                                song_response = requests.get(song_url, headers=headers)
+                                                                if song_response.status_code == 200:
+                                                                    song_soup = BeautifulSoup(song_response.content, 'html.parser')
+                                                                    
+                                                                    # Encontrar o elemento <pre> contendo a letra da música
+                                                                    pre_tag = song_soup.find('pre')
+                                                                    if pre_tag:
+                                                                        # Extrair o texto, incluindo os textos dentro dos links <a>
+                                                                        lyrics = ''.join(pre_tag.stripped_strings)
+                                                                        
+                                                                        # Adicionar ao dataset
+                                                                        data.append({
+                                                                            'Song Name': song_name,
+                                                                            'Lyrics': lyrics
+                                                                        })
+                                                                        
+                                                                        
+                                                                        # Atualizar contador de músicas por letra
+                                                                        tracks_per_letter[letter] += 1
+                                                                        
+                                                                        # Verificar se atingiu o máximo de músicas por letra
+                                                                        if tracks_per_letter[letter] >= max_tracks_per_letter:
+                                                                            break
 
-                time.sleep(5)
-                
-                # Go back to the previous page
-                driver.back()
-                
-                # Wait for the page to reload
-                WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'tr')))
-                
-        except Exception as e:
-            print(f"An error occurred: {e}")
-    page +=1
+                                                    # Verificar se atingiu o máximo de músicas por letra
+                                                    if tracks_per_letter[letter] >= max_tracks_per_letter:
+                                                        break
 
-# Close the browser
-driver.quit()
+                                            # Verificar se atingiu o máximo de músicas por letra
+                                            if tracks_per_letter[letter] >= max_tracks_per_letter:
+                                                break
 
-# Create a pandas DataFrame from the data
-df = pd.DataFrame(data, columns=["Title"])
+                except Exception as e:
+                    print(f"Um erro ocorreu: {e}")
 
-# Save the DataFrame to a CSV file
-df.to_csv("scraped_data_selenium.csv", index=False)
+            # Pausar entre as páginas para evitar sobrecarga no servidor
+            time.sleep(2)
+            page_number += 1
 
-print("Data scraped and saved to scraped_data_selenium.csv")
+        else:
+            print(f"Falha ao acessar a URL {url}. Status Code: {response.status_code}")
+            break
+
+    # Pausar entre as letras do alfabeto
+    time.sleep(2)
+
+# Criar um DataFrame do pandas com os dados coletados
+df = pd.DataFrame(data, columns=['Song Name', 'Lyrics'])
+
+# Salvar o DataFrame em um arquivo CSV
+df.to_csv("scraped_lyrics.csv", index=False)
+
+print("Dados coletados e salvos em scraped_lyrics.csv")

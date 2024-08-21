@@ -7,10 +7,10 @@ app = Flask(__name__)
 
 @app.route('/query', methods=['GET'])
 def query():
-    data = pd.read_csv()
+    data = pd.read_csv("./hate_speech/HateSpeechDataset.csv")
     query = request.args.get('query')
     vectorizer = TfidfVectorizer()
-    X = vectorizer.fit_transform(data["Description"])
+    X = vectorizer.fit_transform(data["Content"])
     Q = vectorizer.transform(query)
     R = X @ Q.T
     R = R.toarray().flatten()
@@ -18,8 +18,8 @@ def query():
     lista = []
     for i in idx:
         dici = {}
-        dici['title'] = data.iloc[i]["Crypto_name"]
-        dici['content'] = data.iloc[i]["Description"]
+        
+        dici['content'] = data.iloc[i]["Content"]
         dici['relevance'] = idx[i]
         lista.append(dici)
 

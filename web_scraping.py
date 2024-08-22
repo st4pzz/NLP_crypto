@@ -11,6 +11,8 @@ headers = {
 # Lista de letras maiúsculas
 upper_letters_list = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
 
+max_songs_per_artist = 10
+
 # Dicionário para contar quantas músicas foram coletadas por letra
 tracks_per_letter = {letter: 0 for letter in upper_letters_list}
 
@@ -58,7 +60,7 @@ for letter in upper_letters_list:
                         # Verificar se o valor do segundo <td> é maior que 50
                         td_value = tds[1].text.strip()
                         
-                        if td_value.isdigit() and int(td_value) > 50:
+                        if td_value.isdigit() and int(td_value) > 100:
                             # Redirecionar para a URL no <a> dentro do primeiro <td>
                             artist_link = tds[0].find('a')
                             if artist_link:
@@ -68,6 +70,7 @@ for letter in upper_letters_list:
                                 artist_response = requests.get(artist_url, headers=headers)
                                 if artist_response.status_code == 200:
                                     artist_soup = BeautifulSoup(artist_response.content, 'html.parser')
+                                    songs_scraped = 0  # Contador de músicas por artista
                                     
                                     # Encontrar todos os álbuns do artista dentro da div com a classe tdata-ext
                                     tdata_ext = artist_soup.find('div', class_='tdata-ext')
@@ -103,8 +106,21 @@ for letter in upper_letters_list:
                                                                     # Encontrar o elemento <pre> contendo a letra da música
                                                                     pre_tag = song_soup.find('pre')
                                                                     if pre_tag:
+                                                                        
+                                                                        
                                                                         # Extrair o texto, incluindo os textos dentro dos links <a>
-                                                                        lyrics = ''.join(pre_tag.stripped_strings)
+                                                                        lyrics = []
+                                                                        for element in pre_tag.children:  # Usando children em vez de descendants
+                                                                            if isinstance(element, str):
+                                                                                # Adicionar texto fora de <a> diretamente à lista
+                                                                                lyrics.append(element.strip())
+                                                                            elif element.name == 'a':
+                                                                                # Adicionar texto de dentro de <a> diretamente à lista
+                                                                                lyrics.append(element.get_text(strip=True))
+
+                                                                        # Combinar a lista em uma única string com espaços corretos
+                                                                        lyrics = ' '.join(lyrics).strip()
+                                                                        
                                                                         
                                                                         # Adicionar ao dataset
                                                                         data.append({
@@ -115,7 +131,13 @@ for letter in upper_letters_list:
                                                                         
                                                                         # Atualizar contador de músicas por letra
                                                                         tracks_per_letter[letter] += 1
+
+                                                                        songs_scraped += 1
                                                                         
+                                                                        
+                                                                        if songs_scraped >= max_songs_per_artist:
+                                                                            break  # Parar de buscar músicas se o limite for atingido
+
                                                                         # Verificar se atingiu o máximo de músicas por letra
                                                                         if tracks_per_letter[letter] >= max_tracks_per_letter:
                                                                             break
@@ -123,10 +145,14 @@ for letter in upper_letters_list:
                                                     # Verificar se atingiu o máximo de músicas por letra
                                                     if tracks_per_letter[letter] >= max_tracks_per_letter:
                                                         break
+                                                    if songs_scraped >= max_songs_per_artist:
+                                                        break  # Parar de buscar álbuns se o limite for atingido
 
                                             # Verificar se atingiu o máximo de músicas por letra
                                             if tracks_per_letter[letter] >= max_tracks_per_letter:
                                                 break
+                                            if songs_scraped >= max_songs_per_artist:
+                                                break  # Parar de buscar álbuns se o limite for atingido
 
                 except Exception as e:
                     print(f"Um erro ocorreu: {e}")
